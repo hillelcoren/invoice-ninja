@@ -111,6 +111,7 @@ class AccountTransformer implements AccountTransformerInterface
             'provider_account_id' => $nordigen_account->metadata["id"],
             'provider_id' => $nordigen_account->institution["id"],
             'provider_name' => $nordigen_account->institution["name"],
+            'provider_history' => $nordigen_account->institution["transaction_total_days"],
             'nickname' => isset($nordigen_account->data["ownerName"]) ? $nordigen_account->data["ownerName"] : '',
             'current_balance' => (float) $used_balance ? $used_balance["balanceAmount"]["amount"] : 0,
             'account_currency' => $used_balance ? $used_balance["balanceAmount"]["currency"] : '',

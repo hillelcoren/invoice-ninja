@@ -21,26 +21,22 @@ class ConnectNordigenBankIntegrationRequest extends Request
 {
     /**
      * Determine if the user is authorized to make this request.
-     *
-     * @return bool
      */
-    public function authorize()
+    public function authorize(): bool
     {
         return true;
     }
 
     /**
      * Get the validation rules that apply to the request.
-     *
-     * @return array
      */
-    public function rules()
+    public function rules(): array
     {
         return [
         ];
     }
 
-    public function prepareForValidation()
+    public function prepareForValidation(): void
     {
         $input = $this->all();
 
@@ -50,12 +46,24 @@ class ConnectNordigenBankIntegrationRequest extends Request
             $input['institution_id'] = $context['institution_id'];
         }
 
-        $input["redirect"] = isset($context["is_react"]) && $context['is_react'] ? config('ninja.react_url') . "/#/settings/bank_accounts" : config('ninja.app_url');
+        $input['redirect'] = ($context['is_react'] ?? false)
+            ? config('ninja.react_url') . '/#/settings/bank_accounts'
+            : config('ninja.app_url');
 
         $this->replace($input);
-
     }
-    public function getTokenContent()
+
+    /**
+     * @return array{
+     *   user_id: int,
+     *   company_key: string,
+     *   context: string,
+     *   is_react: bool,
+     *   institution_id: string,
+     *   requisitionId?: string
+     * }
+     */
+    public function getTokenContent(): ?array
     {
         if ($this->state) {
             $this->token = $this->state;
@@ -66,10 +74,12 @@ class ConnectNordigenBankIntegrationRequest extends Request
         return $data;
     }
 
-    public function getCompany()
+    public function getCompany(): Company
     {
-        MultiDB::findAndSetDbByCompanyKey($this->getTokenContent()['company_key']);
+        $key = $this->getTokenContent()['company_key'];
 
-        return Company::where('company_key', $this->getTokenContent()['company_key'])->firstOrFail();
+        MultiDB::findAndSetDbByCompanyKey($key);
+
+        return Company::where('company_key', $key)->firstOrFail();
     }
 }

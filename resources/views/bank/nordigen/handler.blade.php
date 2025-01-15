@@ -4,6 +4,9 @@
 @push('head')
 
 <link href="https://unpkg.com/nordigen-bank-ui@1.5.2/package/src/selector.min.css" rel="stylesheet" />
+<style type="text/css">
+.institution-modal-close { left: calc(100% - 12px); }
+</style>
 
 @endpush
 
@@ -27,7 +30,7 @@
         // Logo URL that will be shown below the modal form.
         logoUrl: "{{ ($account ?? false) && !$account->isPaid() ? asset('images/invoiceninja-black-logo-2.png') : (isset($company) && !is_null($company) ? $company->present()->logo() : asset('images/invoiceninja-black-logo-2.png')) }}",
         // Will display country list with corresponding institutions. When `countryFilter` is set to `false`, only list of institutions will be shown.
-        countryFilter: false,
+        countryFilter: true,
         // style configs
         styles: {
             // Primary
@@ -45,24 +48,82 @@
             buttonColor: '#3A53EE',
             buttonTextColor: '#fff'
         }
+    }, createSelectionUI = (donor, institution, skippedSelect = false) => {
+        const clone = donor.cloneNode(true),
+            container = document.querySelector('.institution-container'),
+            max_history = parseInt(institution.transaction_total_days),
+            url = new URL(window.location.href);
+
+        container.innerHTML = '';
+        _changeHeading('Select your transaction history');
+
+        clone.classList.replace('ob-list-institution', 'ob-history-option');
+        clone.querySelector('.ob-span-text').innerText = `${max_history} days`;
+        url.searchParams.set('institution_id', institution.id);
+
+        // When we come from the renew button we need to replace the country flag
+        if (skippedSelect) {
+            const logo = document.createElement('img');
+
+            logo.setAttribute('src', institution.logo)
+            logo.setAttribute('class', 'ob-institution-logo');
+
+            clone.querySelector('span.fi').replaceWith(logo)
+        }
+
+        for (let i = 30, next = 30; i <= max_history; i += next) {
+            // If we're close to max, just use the real value
+            if (max_history - i < 15) {
+                continue;
+            }
+
+            const option = clone.cloneNode(true);
+
+            url.searchParams.set('tx_days', i == 360 ? 365 : i);
+
+            option.querySelector('.ob-span-text').innerText = `${i == 360 ? 365 : i} days`;
+            option.querySelector('a').href = url.href;
+            container.append(option);
+
+            // 1, 2, 3, 4, 6, 9, 12, 14, 18, 24 months--as of 24/12/24, no bank exceeds 730 days of history
+            next = i >= 500 ? 180 : i >= 400 ? 120 : i >= 360 ? 60 : i >= 180 ? 90 : i >= 120 ? 60 : 30;
+        }
+
+        url.searchParams.set('tx_days', max_history);
+        clone.querySelector('a').href = url.href;
+        container.append(clone);
     };
 
-    const failedReason = "{{ $failed_reason ?? '' }}".trim();
+    const failedReason = "{{ $failed_reason ?? '' }}".trim(),
+        institutions = @json($institutions ?? []);
 
-    new institutionSelector(@json($institutions ?? []), 'institution-modal-content', config);
+    let institutionId = "{{ $institutionId ?? '' }}";
 
-    if (!failedReason) {
+    new institutionSelector(institutions, 'institution-modal-content', config);
 
-        const institutionList = Array.from(document.querySelectorAll('.ob-list-institution > a'));
+    if ('' !== institutionId && !failedReason) {
+        createSelectionUI(
+            document.querySelector('.ob-institution'),
+            institutions.find(i => i.id == institutionId),
+            true
+        );
+    } else if (!failedReason) {
+        const observer = new MutationObserver((event) => {
+            const institutionButtons = document.querySelectorAll('.ob-list-institution > a');
 
-        institutionList.forEach((institution) => {
-            institution.addEventListener('click', (e) => {
-                e.preventDefault()
-                const institutionId = institution.getAttribute('data-institution');
-                const url = new URL(window.location.href);
-                url.searchParams.set('institution_id', institutionId);
-                window.location.href = url.href;
+            Array.from(institutionButtons).forEach((button) => {
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+
+                    createSelectionUI(button.parentElement, institutions.find(
+                        i => i.id == button.getAttribute('data-institution')
+                    ));
+                });
             });
+        });
+
+        observer.observe(document.querySelector('.institution-container'), {
+            childList: true,
         });
     } else {
         document.getElementsByClassName("institution-search-container")[0].remove();
@@ -99,6 +160,10 @@
                 heading.innerHTML = "{{ ctrans('texts.nordigen_handler_error_heading_institution_invalid', [], $lang ?? 'en') }}";
                 contents.innerHTML = "{{ ctrans('texts.nordigen_handler_error_contents_institution_invalid', [], $lang ?? 'en') }}";
                 break;
+            case "eua-failure":
+                heading.innerHTML = "{{ ctrans('texts.nordigen_handler_error_heading_eua_failure', [], $lang ?? 'en') }}";
+                contents.innerHTML = "{{ ctrans('texts.nordigen_handler_error_contents_eua_failure', [], $lang ?? 'en') }} " + failedReason;
+                break;
             // Confirm Screen Errors
             case "ref-invalid":
                 heading.innerHTML = "{{ ctrans('texts.nordigen_handler_error_heading_ref_invalid', [], $lang ?? 'en') }}";
@@ -131,6 +196,20 @@
         wrapper.appendChild(returnButton);
     }
 
+    const backButton = document.querySelector('.institution-arrow-block');
+    const backButtonObserver = new MutationObserver((records) => {
+        const title = document.querySelector('#institution-modal-header h2').innerText;
+
+        backButton.style.visibility = title == 'Select your country' ? 'hidden' : 'visible';
+        backButton.style.display = 'flex';
+    });
+
+    backButton.style.display = 'flex';
+    backButton.style.visibility = 'hidden';
+
+    backButtonObserver.observe(document.querySelector('header h2'), {
+        childList: true,
+    });
 </script>
 
 @endpush
